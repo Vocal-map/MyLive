@@ -32,6 +32,9 @@ public class VideoMessage extends RtmpMediaMessage {
 		return 12;
 	}
 
+	/**
+	 * @return 返回视频消息类型(0x09)
+	 */
 	@Override
 	public int getMsgType() {
 		return Constants.MSG_TYPE_VIDEO_MESSAGE;

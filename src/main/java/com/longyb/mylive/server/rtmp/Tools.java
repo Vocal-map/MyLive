@@ -3,9 +3,8 @@ package com.longyb.mylive.server.rtmp;
 import java.util.Random;
 
 /**
-@author longyubo
-2019年12月10日 下午8:49:19
-**/
+ * 用于在握手时生成随机数据
+ */
 public class Tools {
 	private static Random random = new Random();;
 	public static byte[] generateRandomData(int size) {

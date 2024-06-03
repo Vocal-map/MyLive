@@ -16,18 +16,15 @@ import io.netty.handler.codec.ReplayingDecoder;
 import lombok.extern.slf4j.Slf4j;
 
 /**
- * 
- * @author longyubo
- * @version 2019年12月14日 下午3:40:18
- *
+ * ChunkDecoder 类用于解码RTMP协议中的数据块（chunk）。
  */
 @Slf4j
-public class ChunkDecoder extends ReplayingDecoder<DecodeState> {
+public class ChunkDecoder extends ReplayingDecoder<DecodeState> /* extends ByteToMessageDecoder extends ChannelInboundHandlerAdapter */ {
 
 	// changed by client command
 	int clientChunkSize = 128;
 
-	HashMap<Integer/* csid */, RtmpHeader> prevousHeaders = new HashMap<>(4);
+	HashMap<Integer/* csid */, RtmpHeader /*csid -> header*/> prevousHeaders = new HashMap<>(4);
 	HashMap<Integer/* csid */, ByteBuf> inCompletePayload = new HashMap<>(4);
 
 	ByteBuf currentPayload = null;
@@ -37,16 +34,17 @@ public class ChunkDecoder extends ReplayingDecoder<DecodeState> {
 
 	@Override
 	protected void decode(ChannelHandlerContext ctx, ByteBuf in, List<Object> out) throws Exception {
-
 		DecodeState state = state();
 
 		if (state == null) {
 			state(DecodeState.STATE_HEADER);
+			log.debug("init state as header");
 		}
 		if (state == DecodeState.STATE_HEADER) {
+			// read header
 			RtmpHeader rtmpHeader = readHeader(in);
 			log.debug("rtmpHeader read:{}", rtmpHeader);
-
+			// complete the header
 			completeHeader(rtmpHeader);
 			currentCsid = rtmpHeader.getCsid();
 
@@ -98,6 +96,7 @@ public class ChunkDecoder extends ReplayingDecoder<DecodeState> {
 				log.debug("------------>client set chunkSize to :{}", clientChunkSize);
 			} else {
 				out.add(msg);
+				log.debug("decode out message:{}", msg);
 			}
 		}
 
@@ -112,25 +111,28 @@ public class ChunkDecoder extends ReplayingDecoder<DecodeState> {
 		byte firstByte = in.readByte();
 		headerLength += 1;
 
-		// CHUNK HEADER is divided into
-		// BASIC HEADER
-		// MESSAGE HEADER
-		// EXTENDED TIMESTAMP
+		// Chunk Header is divided into
+		// Basic Header
+		// Message Header
+		// Extended Timestamp
 
-		// BASIC HEADER
-		// fmt and chunk steam id in first byte
-		int fmt = (firstByte & 0xff) >> 6;
-		int csid = (firstByte & 0x3f);
-
+		// Basic Header
+		// fmt and chunk_steam_id in first byte
+		// Java 会先进行带符号上转型，使用 & 消除符号
+		int fmt = (firstByte & 0xff) >> 6;  // 转为无符号类型, 标识块类型
+		int csid = (firstByte & 0x3f);  // 值在 2 - 63
+		// 当 csid 为 0 时，代表是2字节版本
 		if (csid == 0) {
 			// 2 byte form
+			// 此时ID = 第二个字节 + 64
 			csid = in.readByte() & 0xff + 64;
 			headerLength += 1;
 		} else if (csid == 1) {
 			// 3 byte form
+			// ID = ((第三个字节) * 256 + (第二个字节) + 64)
 			byte secondByte = in.readByte();
 			byte thirdByte = in.readByte();
-			csid = (thirdByte & 0xff) << 8 + (secondByte & 0xff) + 64;
+			csid = ((thirdByte & 0xff) << 8) + (secondByte & 0xff) + 64;
 			headerLength += 2;
 		} else if (csid >= 2) {
 			// that's it!
@@ -142,14 +144,14 @@ public class ChunkDecoder extends ReplayingDecoder<DecodeState> {
 		// basic header complete
 
 		// MESSAGE HEADER
-		switch (fmt) {
+		switch (fmt) {  // 起始位置与重置时
 		case CHUNK_FMT_0: {
 			int timestamp = in.readMedium();
 			int messageLength = in.readMedium();
 			short messageTypeId = (short) (in.readByte() & 0xff);
 			int messageStreamId = in.readIntLE();
 			headerLength += 11;
-			if (timestamp == MAX_TIMESTAMP) {
+			if (timestamp == MAX_TIMESTAMP) {   // 触发扩展时间戳
 				long extendedTimestamp = in.readInt();
 				rtmpHeader.setExtendedTimestamp(extendedTimestamp);
 				headerLength += 4;
@@ -163,6 +165,7 @@ public class ChunkDecoder extends ReplayingDecoder<DecodeState> {
 		}
 			break;
 		case CHUNK_FMT_1: {
+			// 流ID同上一条，
 			int timestampDelta = in.readMedium();
 			int messageLength = in.readMedium();
 			short messageType = (short) (in.readByte() & 0xff);
@@ -180,6 +183,7 @@ public class ChunkDecoder extends ReplayingDecoder<DecodeState> {
 		}
 			break;
 		case CHUNK_FMT_2: {
+			// 流ID，消息长度，消息类型同上
 			int timestampDelta = in.readMedium();
 			headerLength += 3;
 			rtmpHeader.setTimestampDelta(timestampDelta);
@@ -194,7 +198,7 @@ public class ChunkDecoder extends ReplayingDecoder<DecodeState> {
 			break;
 
 		case CHUNK_FMT_3: {
-			// nothing
+			// nothing，全部同上
 		}
 			break;
 
@@ -208,6 +212,7 @@ public class ChunkDecoder extends ReplayingDecoder<DecodeState> {
 		return rtmpHeader;
 	}
 
+	// 用于补全信息
 	private void completeHeader(RtmpHeader rtmpHeader) {
 		RtmpHeader prev = prevousHeaders.get(rtmpHeader.getCsid());
 		if (prev == null) {

@@ -10,31 +10,33 @@ import com.longyb.mylive.server.manager.StreamManager;
 import lombok.extern.slf4j.Slf4j;
 
 /**
- * @author longyubo 2020年1月7日 下午3:02:39
+ * @author vocal
  **/
 @Slf4j
 public class MyLiveServer {
+	static {
+		readConfig();
+	}
 	public static void main(String[] args) throws Exception {
 
-		readConfig();
 		StreamManager streamManager = new StreamManager();
 
+		// 获得配置文件中的rtmp端口号
 		int rtmpPort = MyLiveConfig.INSTANCE.getRtmpPort();
-		int handlerThreadPoolSize=MyLiveConfig.INSTANCE.getHandlerThreadPoolSize();
-
-		RTMPServer rtmpServer = new RTMPServer(rtmpPort, streamManager,handlerThreadPoolSize);
+		// 获得配置文件中的handler线程池大小
+		int handlerThreadPoolSize = MyLiveConfig.INSTANCE.getHandlerThreadPoolSize();
+		// 开启RTMP服务
+		RTMPServer rtmpServer = new RTMPServer(rtmpPort, streamManager, handlerThreadPoolSize);
 		rtmpServer.run();
 
 		if (!MyLiveConfig.INSTANCE.isEnableHttpFlv()) {
 			return;
 		}
-
+		// 开启HTTP-FLV服务
 		int httpPort = MyLiveConfig.INSTANCE.getHttpFlvPort();
-		HttpFlvServer httpFlvServer = new HttpFlvServer(httpPort, streamManager,handlerThreadPoolSize);
+		HttpFlvServer httpFlvServer = new HttpFlvServer(httpPort, streamManager, handlerThreadPoolSize);
 		httpFlvServer.run();
-
 	}
-
 	private static void readConfig() {
 		ObjectMapper mapper = new ObjectMapper(new YAMLFactory());
 		try {

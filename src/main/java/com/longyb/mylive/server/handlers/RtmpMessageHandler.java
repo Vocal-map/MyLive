@@ -26,14 +26,10 @@ import io.netty.channel.SimpleChannelInboundHandler;
 import lombok.extern.slf4j.Slf4j;
 
 /**
- * Rtmp messages are handled here
- * 
- * @author longyubo
- * @version 2019年12月18日 下午11:10:26
- *
+ * 通过RtmpMessageHandler将不同的RTMP消息分发到不同的处理方法中
  */
 @Slf4j
-public class RtmpMessageHandler extends SimpleChannelInboundHandler<RtmpMessage> {
+public class RtmpMessageHandler extends SimpleChannelInboundHandler<RtmpMessage> /*extends ChannelInboundHandlerAdapter*/ {
 
 	int ackWindowSize;
 	int lastSentbackSize;
@@ -64,10 +60,9 @@ public class RtmpMessageHandler extends SimpleChannelInboundHandler<RtmpMessage>
 
 	@Override
 	protected void channelRead0(ChannelHandlerContext ctx, RtmpMessage msg) throws Exception {
-
 		maySendAck(ctx, msg);
 		if (!(msg instanceof VideoMessage || msg instanceof AudioMessage)) {
-			log.info("RTMP_Message_Read : {}", msg);
+			log.debug("RTMP_Message_Read: {}", msg);
 		}
 		if (msg instanceof WindowAcknowledgementSize) {
 			int ackSize = ((WindowAcknowledgementSize) msg).getWindowSize();
@@ -108,7 +103,7 @@ public class RtmpMessageHandler extends SimpleChannelInboundHandler<RtmpMessage>
 	private void handleDataMessage(ChannelHandlerContext ctx, RtmpDataMessage msg) {
 
 		String name = (String) msg.getData().get(0);
-		if ("@setDataFrame".equals(name)) {
+		if ("@setDataFrame".equals(name)) {  // get metadata
 			// save on metadata
 			Map<String, Object> properties = (Map<String, Object>) msg.getData().get(2);
 			properties.remove("filesize");
@@ -148,7 +143,7 @@ public class RtmpMessageHandler extends SimpleChannelInboundHandler<RtmpMessage>
 		}
 
 	}
-
+	// 响应'closeStream'命令
 	private void handleCloseStream(ChannelHandlerContext ctx, RtmpCommandMessage msg) {
 		if (role == Role.Subscriber) {
 			log.info("one subscriber delete stream.do nothing");
@@ -166,8 +161,7 @@ public class RtmpMessageHandler extends SimpleChannelInboundHandler<RtmpMessage>
 			stream.sendEofToAllSubscriberAndClose();
 			streamManager.remove(streamName);
 			normalShutdown = true;
-			ctx.close();
-
+			ctx.close();  // 关闭channel
 		}
 	}
 
@@ -224,7 +218,7 @@ public class RtmpMessageHandler extends SimpleChannelInboundHandler<RtmpMessage>
 
 		stream.addSubscriber(ctx.channel());
 	}
-
+	// 响应'publish'命令
 	private void handlePublish(ChannelHandlerContext ctx, RtmpCommandMessage msg) {
 		log.info("publish :{}", msg);
 		role = Role.Publisher;
@@ -236,8 +230,8 @@ public class RtmpMessageHandler extends SimpleChannelInboundHandler<RtmpMessage>
 		}
 		 
 		String name = (String) msg.getCommand().get(3);
-		streamName.setName(name);
-		streamName.setApp(streamType);
+		streamName.setName(name);  // stream name(对应OBS中的推流码)
+		streamName.setApp(streamType);  // app name is 'live'
 
 		createStream(ctx);
 		// reply a onStatus
@@ -250,14 +244,14 @@ public class RtmpMessageHandler extends SimpleChannelInboundHandler<RtmpMessage>
 	private void createStream(ChannelHandlerContext ctx) {
 		Stream s = new Stream(streamName);
 		s.setPublisher(ctx.channel());
-		streamManager.newStream(streamName, s);
+		streamManager.newStream(streamName, s);  // 记录streamName与其channel的对应关系
 	}
-
+	// 响应'createStream'命令
 	private void handleCreateStream(ChannelHandlerContext ctx, RtmpCommandMessage msg) {
 
 		log.info("create stream received : {}", msg);
 
-		List<Object> result = new ArrayList<Object>();
+		List<Object> result = new ArrayList<>();
 		result.add("_result");
 		result.add(msg.getCommand().get(1));// transaction id
 		result.add(null);// properties
@@ -268,7 +262,7 @@ public class RtmpMessageHandler extends SimpleChannelInboundHandler<RtmpMessage>
 		ctx.writeAndFlush(response);
 
 	}
-
+	// 响应'connect'命令
 	private void handleConnect(ChannelHandlerContext ctx, RtmpCommandMessage msg) {
 
 		// client send connect
@@ -278,7 +272,7 @@ public class RtmpMessageHandler extends SimpleChannelInboundHandler<RtmpMessage>
 
 		String app = (String) ((Map) msg.getCommand().get(2)).get("app");
 		Integer clientRequestEncode = (Integer) ((Map) msg.getCommand().get(2)).get("objectEncoding");
-		if(clientRequestEncode !=null && clientRequestEncode.intValue()==3) {
+		if(clientRequestEncode !=null && clientRequestEncode == 3) {
 			log.error("client :{} request AMF3 encoding but server currently doesn't support",ctx);
 			ctx.close();
 			return ;
@@ -297,7 +291,7 @@ public class RtmpMessageHandler extends SimpleChannelInboundHandler<RtmpMessage>
 		ctx.writeAndFlush(spb);
 		ctx.writeAndFlush(setChunkSize);
 
-		List<Object> result = new ArrayList<Object>();
+		List<Object> result = new ArrayList<>();
 		result.add("_result");
 		result.add(msg.getCommand().get(1));// transaction id
 		result.add(new Amf0Object().addProperty("fmsVer", "FMS/3,0,1,123").addProperty("capabilities", 31));

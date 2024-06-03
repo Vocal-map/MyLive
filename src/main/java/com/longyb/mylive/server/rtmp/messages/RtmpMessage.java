@@ -11,19 +11,19 @@ import lombok.Data;
 @Data
 public abstract class RtmpMessage {
 
-//	RtmpHeader inboundHeader;
+	//	RtmpHeader inboundHeader;
 
 	int inboundHeaderLength;
 	int inboundBodyLength;
 	
-//	public RtmpMessage attachInboundHeader(RtmpHeader theHeader) {
-//		inboundHeader = theHeader;
-//		return this;
-//	}
-//
-//	public RtmpHeader retrieveInboundHeader() {
-//		return inboundHeader;
-//	}
+	//	public RtmpMessage attachInboundHeader(RtmpHeader theHeader) {
+	//		inboundHeader = theHeader;
+	//		return this;
+	//	}
+	//
+	//	public RtmpHeader retrieveInboundHeader() {
+	//		return inboundHeader;
+	//	}
 
 	public abstract int getOutboundCsid()  ;
 	

@@ -5,6 +5,7 @@ import lombok.Data;
 
 /**
  * @author longyubo 2020年1月2日 下午3:36:29
+ * 记录流的名称 app/name 组成
  **/
 @Data
 @AllArgsConstructor

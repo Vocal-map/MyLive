@@ -16,9 +16,8 @@ import io.netty.handler.codec.http.HttpResponseEncoder;
 import lombok.extern.slf4j.Slf4j;
 
 /**
-@author longyubo
-2020年1月7日 下午2:55:47
-**/
+ * HttpFlvServer 类用于启动HTTP-FLV服务。
+ */
 @Slf4j
 public class HttpFlvServer {
 
@@ -48,14 +47,13 @@ public class HttpFlvServer {
 				.childHandler(new ChannelInitializer<SocketChannel>() {
 					@Override
 					public void initChannel(SocketChannel ch) throws Exception {
-						ch.pipeline().addLast(new HttpRequestDecoder());
-					 
-						ch.pipeline().addLast(new HttpResponseEncoder());
-					 
-						ch.pipeline().addLast(new HttpFlvHandler(streamManager));
+						ch.pipeline().addLast(new HttpRequestDecoder());  // in
+						ch.pipeline().addLast(new HttpResponseEncoder());  // out
+						ch.pipeline().addLast(new HttpFlvHandler(streamManager));  // in
 					}
 				}).option(ChannelOption.SO_BACKLOG, 128).childOption(ChannelOption.SO_KEEPALIVE, true);
 
+		// 绑定全端口
 		channelFuture = b.bind(port).sync();
 		log.info("HttpFlv server start , listen at :{}",port);
 

@@ -11,10 +11,10 @@ import io.netty.handler.codec.ByteToMessageDecoder;
 import lombok.extern.slf4j.Slf4j;
 
 /**
- * @author longyubo 2019年12月30日 下午6:09:11
+ * 用于解析RTMP握手消息
  **/
 @Slf4j
-public class HandShakeDecoder extends ByteToMessageDecoder {
+public class HandShakeDecoder extends ByteToMessageDecoder /*extends ChannelInboundHandlerAdapter*/ {
 
 	boolean c0c1done;
 
@@ -62,6 +62,7 @@ public class HandShakeDecoder extends ByteToMessageDecoder {
 			// handshake done
 			CLIENT_HANDSHAKE = null;
 			handshakeDone = true;
+			// 移除当前处理器
 			ctx.channel().pipeline().remove(this);
 		}
 

@@ -1,8 +1,7 @@
 package com.longyb.mylive.server.entities;
 /**
-@author longyubo
-2020年1月2日 下午3:52:51
-**/
+ * 发布者
+ */
 public class Publisher {
 
 }

@@ -1,8 +1,4 @@
 package com.longyb.mylive.server.entities;
-/**
-@author longyubo
-2020年1月2日 下午3:36:21
-**/
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -32,10 +28,20 @@ import io.netty.util.ReferenceCountUtil;
 import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 
+/**
+ * 由流管理器管理
+ * 用于接收，存储，广播流数据到订阅者
+ */
 @Data
 @Slf4j
-public class Stream {
+public class Stream {  // 不同的推流对应不同的Stream
 
+	/**
+	 * 0x46, 0x4C, 0x56 is the ASCII representation for "FLV", which is the signature of an FLV file.
+	 * 0x01 is the version of the FLV file format. In this case, it's version 1.
+	 * 0x05 is a flag indicating that the FLV file contains both audio and video data.
+	 * 00, 00, 00, 0x09 is the offset where the first previous tag size is stored (9 bytes from the start of the file).
+	 */
 	static byte[] flvHeader = new byte[] { 0x46, 0x4C, 0x56, 0x01, 0x05, 00, 00, 00, 0x09 };
 
 	Map<String, Object> metadata;
@@ -47,7 +53,7 @@ public class Stream {
 	AudioMessage aacAudioSpecificConfig;
 	Set<Channel> subscribers;
 
-	List<RtmpMediaMessage> content;
+	List<RtmpMediaMessage> content;  //
 
 	StreamName streamName;
 
@@ -80,9 +86,9 @@ public class Stream {
 		}
 		
 		if(msg instanceof VideoMessage) {
-			VideoMessage vm=(VideoMessage)msg;
+			VideoMessage vm = (VideoMessage)msg;
 			if (vm.isAVCDecoderConfigurationRecord()) {
-				log.info("avcDecoderConfigurationRecord  ok");
+				log.debug("avcDecoderConfigurationRecord  ok");
 				avcDecoderConfigurationRecord = vm;
 			}
 	
@@ -98,7 +104,6 @@ public class Stream {
 				aacAudioSpecificConfig = am;
 			}
 		}
-		
 
 		content.add(msg);
 		if (MyLiveConfig.INSTANCE.isSaveFlvFile()) {
@@ -118,8 +123,6 @@ public class Stream {
 				videoTimestamp += vm.getTimestampDelta();
 				vm.setTimestamp(videoTimestamp);
 			}
-
-		
 		}
 
 		if (msg instanceof AudioMessage) {
@@ -168,14 +171,25 @@ public class Stream {
 		int timestampExtended = ((msg.getTimestamp() & 0xff000000) >> 24);
 
 		ByteBuf buffer = Unpooled.buffer();
-
+		/*
+		FLV Tag = Tag header + Tag data
+		Tag header = TagType + DataSize + Timestamp + TimestampExtended + StreamID
+		Tag data = tag specific data
+		 */
+		/*
+		Tag Type
+		8：audio (0x08)
+		9：video (0x09)
+		18：script data (0x12)
+		 */
 		buffer.writeByte(tagType);
 		buffer.writeMedium(dataSize);
 		buffer.writeMedium(timestamp);
 		buffer.writeByte(timestampExtended);// timestampExtended
-		buffer.writeMedium(0);// streamid
+		buffer.writeMedium(0);// stream_id
+		// Tag data
 		buffer.writeBytes(data);
-		buffer.writeInt(data.length + 11); // prevousTagSize
+		buffer.writeInt(data.length + 11); // prevoursTagSize
 
 		byte[] r = new byte[buffer.readableBytes()];
 		buffer.readBytes(r);
@@ -198,37 +212,52 @@ public class Stream {
 			flvout.flush();
 
 		} catch (IOException e) {
-			log.error("writting flv file failed , stream is :{}", streamName, e);
+			log.error("writing flv file failed , stream is :{}", streamName, e);
 		}
 	}
 
 	private byte[] encodeFlvHeaderAndMetadata() {
 		ByteBuf encodeMetaData = encodeMetaData();
-		ByteBuf buf = Unpooled.buffer();
+		ByteBuf buf = Unpooled.buffer();  // 创建一个ByteBuf，用于写入flv header和metadata
 
-		RtmpMediaMessage msg = content.get(0);
+		RtmpMediaMessage msg = content.get(0);  // 获取第一个msg
 		int timestamp = msg.getTimestamp() & 0xffffff;
 		int timestampExtended = ((msg.getTimestamp() & 0xff000000) >> 24);
 
+		/*
+		FLV = FLV header + FLV file body
+		FLV file body = PreviousTagSize0 + Tag1 + PreviousTagSize1 + Tag2 + ... + PreviousTagSizeN-1 + TagN
+		 */
 		buf.writeBytes(flvHeader);
 		buf.writeInt(0); // previousTagSize0
 
+		/*
+		FLV Tag = Tag header + Tag data
+		Tag header = TagType + DataSize + Timestamp + TimestampExtended + StreamID
+		Tag data = tag specific data
+		 */
+		/*
+		Tag Type
+		8：audio (0x08)
+		9：video (0x09)
+		18：script data (0x12)
+		 */
 		int readableBytes = encodeMetaData.readableBytes();
 		buf.writeByte(0x12); // script
 		buf.writeMedium(readableBytes);
 		// make the first script tag timestamp same as the keyframe
 		buf.writeMedium(timestamp);
 		buf.writeByte(timestampExtended);
-//		buf.writeInt(0); // timestamp + timestampExtended
-		buf.writeMedium(0);// streamid
-		buf.writeBytes(encodeMetaData);
+		// buf.writeInt(0); // timestamp + timestampExtended
+		buf.writeMedium(0); // stream_id, 总是0
+		// Tag data
+		buf.writeBytes(encodeMetaData);  // 写入meta信息
+		// readableBytes为meta的长度，11为头的长度
 		buf.writeInt(readableBytes + 11);
 
 		byte[] result = new byte[buf.readableBytes()];
-		buf.readBytes(result);
-
+		buf.readBytes(result); // 将buf中的数据读取到result中
 		return result;
-
 	}
 
 	private void writeFlvHeaderAndMetadata() throws IOException {
@@ -243,7 +272,7 @@ public class Stream {
 		List<Object> meta = new ArrayList<>();
 		meta.add("onMetaData");
 		meta.add(metadata);
-		log.info("Metadata:{}", metadata);
+		log.debug("Metadata:{}", metadata);
 		AMF0.encode(buffer, meta);
 
 		return buffer;
@@ -251,15 +280,16 @@ public class Stream {
 
 	private void createFileStream() {
 		File f = new File(
-				MyLiveConfig.INSTANCE.getSaveFlVFilePath() + "/" + streamName.getApp() + "_" + streamName.getName());
+				MyLiveConfig.INSTANCE.getSaveFlVFilePath() + 
+						"/" + streamName.getApp() + "_" + streamName.getName() + ".flv");
+		// 创建文件夹
+		if (!f.getParentFile().exists()) {
+			f.getParentFile().mkdirs();
+		}
 		try {
-			FileOutputStream fos = new FileOutputStream(f);
-
-			flvout = fos;
-
+            flvout = new FileOutputStream(f);
 		} catch (IOException e) {
-			log.error("create file : {} failed", e);
-
+			log.error("create file: {} failed", e);
 		}
 
 	}
@@ -274,36 +304,37 @@ public class Stream {
 		for (RtmpMessage msg : content) {
 			channel.writeAndFlush(msg);
 		}
-
 	}
 
 	public synchronized void addHttpFlvSubscriber(Channel channel) {
 		httpFLvSubscribers.add(channel);
 		log.info("http flv subscriber : {} is added to stream :{}", channel, streamName);
 
-		// 1. write flv header and metaData
+		// 1. write flv header and metaData (第一个tag)
 		byte[] meta = encodeFlvHeaderAndMetadata();
 		channel.writeAndFlush(Unpooled.wrappedBuffer(meta));
+		// 2 send config
+		// 2.1 write avcDecoderConfigurationRecord
+		if (avcDecoderConfigurationRecord != null) {
+			avcDecoderConfigurationRecord.setTimestamp(content.get(0).getTimestamp());
+			byte[] avc = encodeMediaAsFlvTagAndPrevTagSize(avcDecoderConfigurationRecord);
+			channel.writeAndFlush(Unpooled.wrappedBuffer(avc));
+		}
 
-		// 2. write avcDecoderConfigurationRecord
-		avcDecoderConfigurationRecord.setTimestamp(content.get(0).getTimestamp());
-		byte[] config = encodeMediaAsFlvTagAndPrevTagSize(avcDecoderConfigurationRecord);
-		channel.writeAndFlush(Unpooled.wrappedBuffer(config));
-
-		// 3. write aacAudioSpecificConfig
+		// 2.2 write aacAudioSpecificConfig
 		if (aacAudioSpecificConfig != null) {
 			aacAudioSpecificConfig.setTimestamp(content.get(0).getTimestamp());
 			byte[] aac = encodeMediaAsFlvTagAndPrevTagSize(aacAudioSpecificConfig);
 			channel.writeAndFlush(Unpooled.wrappedBuffer(aac));
 		}
-		// 4. write content
-
+		// 3. write content
 		for (RtmpMediaMessage msg : content) {
 			channel.writeAndFlush(Unpooled.wrappedBuffer(encodeMediaAsFlvTagAndPrevTagSize(msg)));
 		}
 
 	}
 
+	// 向所有的订阅者推送消息
 	private synchronized void broadCastToSubscribers(RtmpMediaMessage msg) {
 		Iterator<Channel> iterator = subscribers.iterator();
 		while (iterator.hasNext()) {
@@ -334,6 +365,7 @@ public class Stream {
 
 	}
 
+	// 推送结束标识
 	public synchronized void sendEofToAllSubscriberAndClose() {
 		if (MyLiveConfig.INSTANCE.isSaveFlvFile() && flvout != null) {
 			try {
